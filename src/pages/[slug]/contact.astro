@@ -1,0 +1,34 @@
+---
+import {limitedBody} from '../../lib/request';
+import {env} from 'cloudflare:workers';
+import Layout from '../../components/Layout.astro';import {languageFor} from '../../lib/locale';import type {Poll} from '../../lib/polls';
+import {drawOpen,parseContact,saveContact,mentionText,contactText,type Draw} from '../../lib/contacts';
+const language=languageFor(Astro.request,Astro.url,Astro.cookies);const fr=language==='fr';Astro.response.headers.set('Cache-Control','no-store');
+let poll:Poll|null=null;let draw:Draw|null=null;let participationId:string|null=null;let error='';let success=false;
+const drawing=Astro.url.searchParams.get('draw')==='1';
+try{
+ poll=await env.DB.prepare("SELECT * FROM polls WHERE slug=? AND status!='draft'").bind(Astro.params.slug).first<Poll>();
+ if(!poll)Astro.response.status=404;
+ else {
+  if(drawing)draw=await env.DB.prepare('SELECT * FROM draws WHERE poll_id=? AND enabled=1 ORDER BY rowid DESC LIMIT 1').bind(poll.id).first<Draw>();
+  const token=Astro.cookies.get('forgenord_participant')?.value;
+  if(token)participationId=(await env.DB.prepare('SELECT id FROM participations WHERE poll_id=? AND participant_token=?').bind(poll.id,token).first<{id:string}>())?.id??null;
+  if(Astro.request.method==='POST'){
+   const body=(await limitedBody(Astro.request,12000)) ?? 'x'.repeat(12001);
+   if(Astro.request.headers.get('origin')!==Astro.url.origin||body.length>12000||!Astro.request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')){Astro.response.status=400;error=fr?'Demande invalide.':'Invalid request.';}
+   else {const form=new FormData();new URLSearchParams(body).forEach((value,key)=>form.append(key,value));const contact=parseContact(form);
+    if(!contact||(!drawing&&(!participationId||!contact.mention))||(drawing&&(!draw||!drawOpen(draw)||!form.has('draw_contact')||!form.has('draw_terms')))){Astro.response.status=400;error=fr?'Vérifiez vos coordonnées et les permissions; le tirage doit être ouvert.':'Check your contact details and permissions; the draw must be open.';}
+    else {await saveContact(env.DB,poll.id,poll.organization,contact,drawing?draw:null,participationId);success=true;}
+   }
+  }
+ }
+}catch{Astro.response.status=503;error=fr?'Le service est temporairement indisponible.':'The service is temporarily unavailable.';}
+const available=poll&&(drawing?draw&&drawOpen(draw):!!participationId);
+const mention=poll?mentionText(poll.organization):null;const direct=poll?contactText(poll.organization):null;
+---
+<Layout language={language} title={drawing?(fr?'Participation au tirage':'Draw entry'):(fr?'Mention dans la communauté':'Community mention')}>
+<h1>{drawing?(fr?'Participation séparée au tirage':'Separate draw entry'):(fr?'Mention dans la communauté':'Community mention')}</h1>
+{error&&<p class="error" role="alert">{error}</p>}{success&&<p class="notice" role="status">{fr?'Votre permission a été enregistrée.':'Your permission has been saved.'}</p>}
+{available?<form method="post"><p>{fr?'Ces coordonnées restent privées. Seul votre nom ou identifiant social pourra être mentionné si vous l’autorisez.':'These contact details remain private. Only your name or social handle may be mentioned if you authorize it.'}</p><label>{fr?'Nom facultatif':'Optional name'}<input name="display_name" maxlength="80"/></label><label>{fr?'Moyen de contact':'Contact method'}<select name="channel"><option value="email">{fr?'Courriel':'Email'}</option><option value="tiktok">TikTok</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select></label><label>{fr?'Courriel ou identifiant du compte':'Email or account handle'}<input name="address" maxlength="254" required/></label><label><input type="checkbox" name="mention" required={!drawing}/>{mention?.[language]}</label>{drawing&&draw&&<><section><h2>{fr?'Modalités':'Terms'}</h2><p style="white-space:pre-wrap">{draw[`terms_${language}`]}</p><p>{fr?'Version':'Version'} : {draw.terms_version}</p></section><label><input type="checkbox" name="draw_terms" required/>{fr?'J’accepte les modalités de ce tirage.':'I accept the terms of this draw.'}</label><label><input type="checkbox" name="draw_contact" required/>{direct?.[language]}</label></>}<button>{fr?'Enregistrer':'Save'}</button></form>:<p class="notice">{drawing?(fr?'Le tirage est fermé.':'The draw is closed.'):(fr?'Enregistrez d’abord votre vote ou votre proposition.':'Save your vote or proposal first.')}</p>}
+{poll&&<a href={`/${poll.slug}`}>{fr?'Retour à la consultation':'Back to consultation'}</a>}
+</Layout>
