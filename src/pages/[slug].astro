@@ -1,0 +1,43 @@
+---
+import { env } from 'cloudflare:workers';
+import Layout from '../components/Layout.astro';
+import { languageFor } from '../lib/locale';
+import { isOpen,parseChoice,saveChoice,safeLink,safePhoto,type Poll,type Option } from '../lib/polls';
+import { promotionFor } from '../lib/promotion';
+const language=languageFor(Astro.request,Astro.url,Astro.cookies);const fr=language==='fr';
+Astro.response.headers.set('Cache-Control','no-store');
+let poll:Poll|null=null;let options:Option[]=[];let error='';let success=false;let promo:string|null=null;
+let token=Astro.cookies.get('forgenord_participant')?.value;
+if(!token||!/^[0-9a-f-]{36}$/.test(token)){token=crypto.randomUUID();Astro.cookies.set('forgenord_participant',token,{path:'/',httpOnly:true,sameSite:'strict',secure:Astro.url.protocol==='https:',maxAge:31536000});}
+try{
+ poll=await env.DB.prepare("SELECT * FROM polls WHERE slug=? AND status!='draft'").bind(Astro.params.slug).first<Poll>();
+ if(poll) options=(await env.DB.prepare('SELECT * FROM poll_options WHERE poll_id=? AND archived=0 ORDER BY sort_order,id').bind(poll.id).all<Option>()).results;
+ else Astro.response.status=404;
+ if(Astro.request.method==='POST'&&poll){
+  if(Astro.request.headers.get('origin')!==Astro.url.origin){Astro.response.status=403;error=fr?'Origine de la demande invalide.':'Invalid request origin.';}
+  else if(!isOpen(poll)){Astro.response.status=409;error=fr?'La consultation est fermée.':'The consultation is closed.';}
+  else if(!Astro.request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')){Astro.response.status=415;error=fr?'Format de formulaire invalide.':'Invalid form format.';}
+  else {
+   const body=await Astro.request.text();
+   if(body.length>12000){Astro.response.status=413;error=fr?'Formulaire trop volumineux.':'Form is too large.';}
+   else {const form=new FormData();new URLSearchParams(body).forEach((value,key)=>form.append(key,value));const choice=parseChoice(form,options,poll);
+    if(!choice){Astro.response.status=400;error=fr?'Vérifiez votre choix et l’autorisation de réutilisation pour une proposition.':'Check your choice and the reuse permission for a proposal.';}
+    else {await saveChoice(env.DB,poll,token,choice,language);success=true;promo=await promotionFor(env.DB,poll.id,token);}
+   }
+  }
+ }
+}catch{Astro.response.status=503;error=fr?'Le service est temporairement indisponible.':'The service is temporarily unavailable.';}
+const open=poll&&isOpen(poll);
+---
+<Layout language={language} title={poll?poll[`title_${language}`]:(fr?'Consultation indisponible':'Consultation unavailable')}>
+{error&&<p class="notice error" role="alert">{error}</p>}
+{!poll&&!error&&<h1>{fr?'Consultation introuvable':'Consultation not found'}</h1>}
+{poll&&<><p>{poll.organization}</p><h1>{poll[`title_${language}`]}</h1><p>{poll[`description_${language}`]}</p>
+<p class="notice">{open?(fr?'Consultation ouverte':'Consultation open'):(fr?'Consultation fermée':'Consultation closed')}</p>
+{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}<p>{fr?'Vous pouvez modifier votre choix tant que la consultation est ouverte.':'You can change your choice while the consultation is open.'}</p></section>}
+<form method="post"><fieldset disabled={!open}><legend>{fr?'Voter pour un modèle':'Vote for a model'}</legend><div class="cards">{options.map(option=>{const photo=safePhoto(option.image_key);const link=safeLink(option.external_url);return <article class="card">{photo&&<img src={photo} alt={option[`name_${language}`]} loading="lazy" width="640" height="480"/>}<label><input type="radio" name="choice" value={option.id} required/> {option[`name_${language}`]}</label><p>{option[`description_${language}`]}</p>{link&&<a href={link} target="_blank" rel="noopener noreferrer">{fr?'Voir l’article':'View listing'} ↗</a>}</article>;})}</div></fieldset>
+{poll.proposal_terms_version&&<fieldset disabled={!open}><legend>{fr?'Ou proposer une idée':'Or suggest an idea'}</legend><label><input type="radio" name="choice" value="proposal"/> {fr?'Je propose une idée':'I suggest an idea'}</label><label>{fr?'Nom proposé':'Suggested name'}<input name="title" maxlength="100"/></label><label>{fr?'Description facultative':'Optional description'}<textarea name="description" maxlength="1000"></textarea></label><label><input type="checkbox" name="reuse"/> {poll[`proposal_terms_${language}`]}</label></fieldset>}
+{open&&<button type="submit">{fr?'Enregistrer mon choix':'Save my choice'}</button>}
+</form><p>{fr?'Un choix par navigateur. Effacer les cookies permet de participer à nouveau. Aucun courriel n’est nécessaire pour voter.':'One choice per browser. Clearing cookies allows another entry. Voting does not require an email.'}</p>
+<p class="notice">{fr?'Le tirage est fermé tant que ses modalités ne sont pas publiées et validées.':'The draw remains closed until its terms have been published and validated.'}</p></>}
+</Layout>

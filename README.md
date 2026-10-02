@@ -4,7 +4,7 @@ Plateforme autonome de consultations FR/EN sur Astro SSR, TypeScript et Cloudfla
 
 ## État de livraison
 
-Première PR : socle Docker, schéma D1 et lecture serveur du code promotionnel. La page d’accueil est provisoire. Les consultations publiques, formulaires et interface de gestion arrivent dans les PR suivantes; ce socle ne doit pas encore être déployé en production.
+Socle Docker, schéma D1, consultations publiques bilingues, vote ou proposition avec autorisation de réutilisation et confirmation promotionnelle. La gestion locale, les coordonnées facultatives et les inscriptions aux tirages restent à livrer avant le MVP complet.
 
 ## Démarrage Docker
 
@@ -30,7 +30,7 @@ Les tests SQLite vérifient les contraintes relationnelles. Les contrôles Wrang
 
 ## Données et consentements
 
-Les consultations ont des slugs uniques et des dates facultatives indépendantes de tout événement externe. Les horaires doivent être fournis au format UTC ISO 8601. Une participation par navigateur et consultation peut devenir un vote ou une proposition; le service devra remplacer les lignes de choix dans une transaction D1. Le cookie pseudonyme ne garantit pas une personne unique. Aucun IP ou emplacement n’est enregistré par l’application.
+Les consultations ont des slugs uniques et des dates facultatives indépendantes de tout événement externe. Les horaires doivent être fournis au format UTC ISO 8601. Une participation par navigateur et consultation peut devenir un vote ou une proposition; le service remplace les lignes de choix dans une transaction D1. Le cookie pseudonyme ne garantit pas une personne unique. Aucun IP ou emplacement n’est enregistré par l’application.
 
 Les tables `votes`, `proposals`, `contacts`, `consents` et `draw_entries` séparent les concepts. Les propositions exigent une autorisation de réutilisation dont le texte FR/EN et la version sont conservés. Les mentions publiques et contacts pour un tirage exigent des permissions distinctes. Les coordonnées ne sont pas nécessaires pour voter ou recevoir le code promo.
 
@@ -38,7 +38,7 @@ Les tirages sont fermés par défaut. La base refuse leur activation sans modali
 
 ## Code promotionnel
 
-La table `poll_parameters` contient, par consultation, `promo_code`, `promo_starts_at` et `promo_ends_at`. Aucun code réel ni code de démonstration n’est versionné. La fonction serveur `promotionFor` exige une participation existante et une période valide avant de retourner le code. Le futur écran de confirmation utilisera cette fonction avec une réponse `Cache-Control: no-store`.
+La table `poll_parameters` contient, par consultation, `promo_code`, `promo_starts_at` et `promo_ends_at`. Aucun code réel ni code de démonstration n’est versionné. La fonction serveur `promotionFor` exige une participation existante et une période valide avant de retourner le code. L’écran de confirmation utilise cette fonction avec une réponse `Cache-Control: no-store`.
 
 Le code sera nécessairement visible dans le HTML de confirmation fourni à la personne; il n’est pas un secret individuel. Il ne doit apparaître ni dans les sources Astro, ni dans le bundle client, ni dans les logs. Sa validité effective et son utilisation restent contrôlées dans Etsy. L’expiration ne ferme pas la consultation. La saisie se fera dans la gestion locale; aucun éditeur SQL libre n’est prévu.
 
@@ -60,3 +60,7 @@ docker compose run --rm -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID app npx
 ```
 
 Construire avec la configuration de production sélectionnée au build (`FORGENORD_WRANGLER_CONFIG=wrangler.production.jsonc`), vérifier que la configuration générée cible bien `forgenord-vote` et la bonne D1, puis effectuer le dry-run avant tout déploiement autorisé. La procédure finale sera vérifiée avec les versions verrouillées avant livraison du MVP. Ne pas déployer la configuration locale : son identifiant est fictif. Aucun déploiement automatique ou fusion automatique.
+
+## Démonstration locale
+
+`docker compose run --rm app npx wrangler d1 execute forgenord-vote-db --local --file scripts/seed-demo.sql` crée une consultation brouillon et sept options. Aucun lien Etsy, code promo ou autorisation de réutilisation n’est inventé. Valider les noms, les descriptions FR/EN et le texte d’autorisation avant publication via la future gestion. Les images copiées seules depuis Giocoso Hunt sont dans `public/models/`; `grandpic.jpg` est le nom exact.
