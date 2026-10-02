@@ -141,3 +141,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# ForgeNord Vote local runtime and confidential configuration
+.astro/
+.wrangler/
+.dev.vars*
+wrangler.production.jsonc
+worker-configuration.d.ts
+*.sqlite*
+*.db
+backups/

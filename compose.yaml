@@ -1,0 +1,13 @@
+services:
+  app:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - .:/app
+    environment:
+      npm_config_cache: /tmp/npm-cache
+      WRANGLER_SEND_METRICS: "false"
+    ports:
+      - "127.0.0.1:4321:4321"
+    command: npm run dev
