@@ -95,6 +95,8 @@ assert.match(confirmation, /id="results-heading"/);
 assert.match(confirmation, /100,0 %/);
 assert.match(confirmation, /name="address"/);
 assert.match(confirmation, /name="mention"/);
+assert.match(confirmation,/id="saved-choice"/);
+assert.match(confirmation,/Option test/);
 assert.ok(!confirmation.includes('name="choice"'));
 assert.ok(!confirmation.includes('name="draw_contact"'));
 for (const language of ['fr','en']) {
@@ -105,6 +107,8 @@ for (const language of ['fr','en']) {
  assert.match(reloaded,/name="address"/);
  assert.ok(!reloaded.includes(code));
  assert.match(reloaded,/id="results-heading"/);
+ assert.match(reloaded,/id="saved-choice"/);
+ assert.match(reloaded,language==='fr'?/Votre vote enregistré :/:/Your saved vote:/);
 }
 const edit = await fetch(site+'/'+slug+'?edit=1', {headers:{cookie}});
 const editHtml = await edit.text();
@@ -135,6 +139,8 @@ const proposal = await submit("/" + slug, {
 assert.equal(proposal.status, 200);
 const proposalConfirmation = await proposal.text();
 assert.match(proposalConfirmation, /0,0 %/);
+assert.match(proposalConfirmation,/Votre proposition enregistrée :/);
+assert.match(proposalConfirmation,/New model/);
 const mention = await submit("/" + slug + "/contact", {
   channel: "instagram",
   address: "@test_account",
