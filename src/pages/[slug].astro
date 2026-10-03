@@ -65,6 +65,6 @@ const open=poll&&isOpen(poll);
 {open&&<button type="submit">{fr?'Enregistrer mon choix':'Save my choice'}</button>}
 </form><p>{fr?'Un choix par navigateur. Aucun courriel n’est nécessaire pour voter.':'One choice per browser. Voting does not require an email.'}</p></>}
 
-{!choosing&&<p class="notice">{draw&&drawOpen(draw)?<a href={`/${poll.slug}/contact?draw=1`}>{fr?'Participer séparément au tirage':'Enter the draw separately'}</a>:(fr?'Le tirage est fermé.':'The draw is closed.')}</p>}
+{!choosing&&(!draw||!drawOpen(draw))&&<p class="notice">{fr?'Le tirage est fermé.':'The draw is closed.'}</p>}
 {!choosing&&!success&&open&&<p><a href={`/${poll.slug}?edit=1`}>{fr?'Modifier mon choix':'Change my choice'}</a></p>}</>}
 </Layout>
