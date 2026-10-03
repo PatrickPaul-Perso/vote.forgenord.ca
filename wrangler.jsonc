@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "forgenord-vote",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-10-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./dist", "binding": "ASSETS" },
+  "d1_databases": [{ "binding": "DB", "database_name": "forgenord-vote-db", "database_id": "00000000-0000-4000-8000-000000000000", "migrations_dir": "migrations" }],
+  "observability": { "enabled": true, "logs": { "invocation_logs": false }, "traces": { "enabled": true } }
+}

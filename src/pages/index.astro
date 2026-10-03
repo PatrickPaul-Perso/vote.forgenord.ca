@@ -1,0 +1,5 @@
+---
+const lang = Astro.request.headers.get('accept-language')?.startsWith('en') ? 'en' : 'fr';
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<!doctype html><html lang={lang}><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width"/><title>ForgeNord Vote</title></head><body><main><h1>ForgeNord Vote</h1><p>{lang === 'fr' ? 'La plateforme de consultations se prépare.' : 'The consultation platform is being prepared.'}</p></main></body></html>
