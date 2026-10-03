@@ -69,6 +69,7 @@ assert.equal(page.status, 200);
 const html = await page.text();
 assert.match(html, /Test consultation/);
 assert.ok(!html.includes(code));
+assert.ok(!html.includes('id="results-heading"'));
 const cookie = page.headers
   .get("set-cookie")
   .match(/forgenord_participant=[^;]+/)[0];
@@ -87,6 +88,8 @@ const vote = await submit("/" + slug, { choice: option });
 assert.equal(vote.status, 200);
 const confirmation = await vote.text();
 assert.ok(confirmation.includes(code));
+assert.match(confirmation, /id="results-heading"/);
+assert.match(confirmation, /100,0 %/);
 assert.match(confirmation, /name="address"/);
 assert.match(confirmation, /name="mention"/);
 assert.ok(!confirmation.includes('name="draw_contact"'));
@@ -97,7 +100,18 @@ for (const language of ['fr','en']) {
  assert.match(reloaded,/name="mention"/);
  assert.match(reloaded,/name="address"/);
  assert.ok(!reloaded.includes(code));
+ assert.match(reloaded,/id="results-heading"/);
 }
+const secondOption = crypto.randomUUID();
+await manage({action:'option',id:secondOption,poll_id:poll,name_fr:'Deuxième modèle',name_en:'Second model',sort_order:'1',archived:'0'});
+for(let voter=0;voter<2;voter++){
+ const response=await fetch(site+'/'+slug,{method:'POST',headers:{origin:site,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({choice:secondOption})});
+ assert.equal(response.status,200);
+}
+const fractional = await fetch(site+'/'+slug+'?lang=fr',{headers:{cookie}});
+const fractionalHtml = await fractional.text();
+assert.match(fractionalHtml,/33,3 %/);
+assert.match(fractionalHtml,/66,7 %/);
 const bad = await submit("/" + slug, {
   choice: "proposal",
   title: "New model",
@@ -109,6 +123,8 @@ const proposal = await submit("/" + slug, {
   reuse: "on",
 });
 assert.equal(proposal.status, 200);
+const proposalConfirmation = await proposal.text();
+assert.match(proposalConfirmation, /0,0 %/);
 const mention = await submit("/" + slug + "/contact", {
   channel: "instagram",
   address: "@test_account",

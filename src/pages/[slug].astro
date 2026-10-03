@@ -2,6 +2,8 @@
 import {limitedBody} from '../lib/request';
 import { env } from 'cloudflare:workers';
 import Layout from '../components/Layout.astro';
+import VoteResults from '../components/VoteResults.astro';
+import { loadVoteResults, type VoteResult } from '../lib/results';
 import { languageFor } from '../lib/locale';
 import { isOpen,parseChoice,saveChoice,safeLink,safePhoto,type Poll,type Option } from '../lib/polls';
 import { drawOpen, mentionText, type Draw } from '../lib/contacts';
@@ -31,6 +33,10 @@ try{
   }
  }
 }catch{Astro.response.status=503;error=fr?'Le service est temporairement indisponible.':'The service is temporarily unavailable.';}
+let results:VoteResult[]|null=null;let resultsError=false;
+if(poll&&participated){
+ try{results=await loadVoteResults(env.DB,poll.id);}catch{resultsError=true;}
+}
 const open=poll&&isOpen(poll);
 ---
 <Layout language={language} title={poll?poll[`title_${language}`]:(fr?'Consultation indisponible':'Consultation unavailable')}>
@@ -39,6 +45,8 @@ const open=poll&&isOpen(poll);
 {poll&&<><p>{poll.organization}</p><h1>{poll[`title_${language}`]}</h1><p>{poll[`description_${language}`]}</p>
 <p class="notice">{open?(fr?'Consultation ouverte':'Consultation open'):(fr?'Consultation fermée':'Consultation closed')}</p>
 {success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}<p>{fr?'Vous pouvez modifier votre choix tant que la consultation est ouverte.':'You can change your choice while the consultation is open.'}</p><p><a href="#mention-consent">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</a></p></section>}
+{results&&<VoteResults language={language} results={results}/>}
+{resultsError&&<p role="status">{fr?'Les résultats sont temporairement indisponibles.':'Results are temporarily unavailable.'}</p>}
 <section id="mention-consent" class="notice" aria-labelledby="mention-heading">
 <h2 id="mention-heading">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</h2>
 <p>{fr?'Cette autorisation est indépendante du tirage. Votre courriel reste privé; seul votre nom ou votre identifiant social peut être mentionné avec votre permission.':'This permission is independent of the draw. Your email remains private; only your name or social handle may be mentioned with your permission.'}</p>
