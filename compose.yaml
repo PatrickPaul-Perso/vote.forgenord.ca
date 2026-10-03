@@ -11,3 +11,15 @@ services:
     ports:
       - "127.0.0.1:4321:4321"
     command: npm run dev
+  admin:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - .:/app
+    environment:
+      npm_config_cache: /tmp/npm-cache
+      WRANGLER_SEND_METRICS: "false"
+    ports:
+      - "127.0.0.1:${FORGENORD_ADMIN_PORT:-8790}:8788"
+    command: npx wrangler dev --config admin/wrangler.jsonc --local --persist-to /app/.wrangler/state --ip 0.0.0.0 --port 8788

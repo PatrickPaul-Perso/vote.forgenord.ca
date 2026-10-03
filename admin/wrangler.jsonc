@@ -1,0 +1,1 @@
+{"name":"forgenord-vote-local-admin","main":"./worker.ts","compatibility_date":"2026-10-02","compatibility_flags":["nodejs_compat"],"d1_databases":[{"binding":"DB","database_name":"forgenord-vote-db","database_id":"00000000-0000-4000-8000-000000000000","migrations_dir":"../migrations"}]}
