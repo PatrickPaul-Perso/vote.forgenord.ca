@@ -80,7 +80,7 @@ Le build et le dry-run ont été vérifiés avec la simulation locale; la liaiso
 
 ## Gestion locale
 
-Ouvrir http://127.0.0.1:8790 après les migrations. Ce service Docker séparé utilise uniquement la D1 locale, sans jeton Cloudflare et sans éditeur SQL libre. Son code dans `admin/` ne fait pas partie des routes Astro et n’est pas inclus dans le Worker public. Ne jamais déployer son fichier Wrangler.
+Ouvrir http://127.0.0.1:8790 après les migrations. Ce service Docker séparé utilise la D1 locale par défaut et peut gérer la D1 Cloudflare avec un jeton transmis au conteneur, sans éditeur SQL libre. Son code dans `admin/` ne fait pas partie des routes Astro et n’est pas inclus dans le Worker public. Ne jamais déployer son fichier Wrangler.
 
 Les formulaires gèrent consultations, options, propositions privées, paramètres promotionnels et tirages. Les slugs des consultations existantes sont stables. Les options se désactivent avec `archived=1`; elles ne sont pas supprimées. Les dates sont en UTC, par exemple `2026-10-02T12:00:00Z`. Les périodes de consultation sont facultatives; celle d’un code promo exige un début et une fin. Les formulaires utilisent les noms des champs du schéma; la liste affiche au plus 200 lignes par table.
 
@@ -88,7 +88,7 @@ Pour ouvrir une consultation : fournir les titres et descriptions FR/EN, les sep
 
 Pour ouvrir un tirage : réviser et publier ses modalités FR/EN dans les champs du tirage, renseigner leur version, leur date de validation et la période éventuelle, puis `enabled=1`. Les modalités sont affichées sur la page d’inscription. Un vote ne crée aucune inscription. La permission de mention publique est indépendante du contact pour le tirage. Un moyen de contact est requis seulement pour enregistrer ces permissions ou participer au tirage. Le serveur ne réalise aucune communication automatique ni attribution de prix.
 
-La gestion de la D1 de production depuis cette interface est reportée; l’interface MVP gère la simulation locale. Le déploiement public et les opérations distantes restent soumis à autorisation explicite. Définir la durée de conservation des coordonnées et valider les textes avant d’ouvrir la collecte en production.
+La gestion permet de sélectionner explicitement la D1 locale ou distante; ses formulaires ne synchronisent pas les deux bases. Le déploiement public et les opérations distantes restent soumis à autorisation explicite. Définir la durée de conservation des coordonnées et valider les textes avant d’ouvrir la collecte en production.
 
 Vérification HTTP locale avec des données synthétiques (création d’une consultation temporaire ensuite remise en brouillon) : `docker compose exec app node scripts/check-local.mjs`. Arrêter les serveurs avant le build pour éviter une concurrence sur le cache Vite.
 
@@ -97,3 +97,19 @@ Après un vote ou une proposition enregistré, le formulaire facultatif « Coord
 Les photos des options ouvrent leur lien externe HTTPS dans un nouvel onglet lorsque `external_url` est renseigné dans la gestion. Pour Giocoso Creation, saisir l’URL de la fiche Etsy correspondante. Sans lien valide, la photo reste affichée sans lien.
 
 Après participation, la consultation affiche les résultats agrégés : miniature et nom du modèle, nombre de votes et pourcentage arrondi à une décimale. Le dénominateur comprend uniquement les votes pour des modèles de cette consultation, y compris les options archivées; les propositions ne sont pas des votes pour un modèle. Le tableau reste visible après rechargement dans le même navigateur et affiche 0,0 % sans vote. Aucun résultat n’est affiché avant participation.
+
+## Gestion de la D1 Cloudflare depuis Docker
+
+Dans le terminal où `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID` sont exportés, démarrer ou recréer la gestion :
+
+```sh
+docker compose up -d --force-recreate admin
+```
+
+L’identifiant D1 est lu depuis `FORGENORD_D1_DATABASE_ID` ou, à défaut, depuis `wrangler.production.jsonc` ignoré par Git. Aucun identifiant réel n’est ajouté au dépôt. Le jeton doit autoriser la lecture et l’écriture D1 sur le compte attendu. Les variables sont copiées dans un fichier temporaire privé du conteneur pour le runtime local, puis supprimées à l’arrêt normal; elles ne sont ni affichées dans l’interface ni transmises au Worker public.
+
+Ouvrir http://127.0.0.1:8790, choisir **Cloudflare — distante**, puis **Afficher cette base**. Les formulaires gèrent consultations, options, propositions, promotions et tirages sur cette cible. Enregistrer modifie immédiatement la D1 distante, sans build ni déploiement. La cible reste affichée et chaque formulaire conserve la sélection. Sans identifiants valides, le choix distant est indisponible; aucune retombée silencieuse vers la base locale.
+
+Le serveur de gestion reste local, lié à `127.0.0.1`, et démarre Wrangler avec `--local`. Ses appels Cloudflare passent par l’API D1 côté serveur, avec requêtes paramétrées et batches pour les paramètres promotionnels. Il ne propose aucune saisie de SQL. Les migrations restent des commandes Wrangler séparées.
+
+Après utilisation : `docker compose stop admin`. Après changement de jeton, compte ou identifiant D1 : recréer le conteneur avec la commande ci-dessus. Ne pas partager les sorties d’inspection Docker contenant l’environnement.
