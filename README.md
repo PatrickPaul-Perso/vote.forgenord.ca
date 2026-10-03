@@ -95,3 +95,5 @@ Vérification HTTP locale avec des données synthétiques (création d’une con
 Après un vote ou une proposition enregistré, le formulaire facultatif « Coordonnées et autorisation de mention » apparaît directement sur la consultation et reste accessible après rechargement dans le même navigateur. Il est indépendant du tirage et ne conditionne ni le vote ni le code promotionnel.
 
 Les photos des options ouvrent leur lien externe HTTPS dans un nouvel onglet lorsque `external_url` est renseigné dans la gestion. Pour Giocoso Creation, saisir l’URL de la fiche Etsy correspondante. Sans lien valide, la photo reste affichée sans lien.
+
+Après participation, la consultation affiche les résultats agrégés : miniature et nom du modèle, nombre de votes et pourcentage arrondi à une décimale. Le dénominateur comprend uniquement les votes pour des modèles de cette consultation, y compris les options archivées; les propositions ne sont pas des votes pour un modèle. Le tableau reste visible après rechargement dans le même navigateur et affiche 0,0 % sans vote. Aucun résultat n’est affiché avant participation.
