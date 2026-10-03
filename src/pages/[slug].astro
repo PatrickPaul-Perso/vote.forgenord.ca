@@ -33,8 +33,9 @@ try{
   }
  }
 }catch{Astro.response.status=503;error=fr?'Le service est temporairement indisponible.':'The service is temporarily unavailable.';}
+const choosing=!participated||(Astro.request.method==='POST'&&!success)||(Astro.request.method==='GET'&&Astro.url.searchParams.get('edit')==='1');
 let results:VoteResult[]|null=null;let resultsError=false;
-if(poll&&participated){
+if(poll&&participated&&!choosing){
  try{results=await loadVoteResults(env.DB,poll.id);}catch{resultsError=true;}
 }
 const open=poll&&isOpen(poll);
@@ -44,10 +45,10 @@ const open=poll&&isOpen(poll);
 {!poll&&!error&&<h1>{fr?'Consultation introuvable':'Consultation not found'}</h1>}
 {poll&&<><p>{poll.organization}</p><h1>{poll[`title_${language}`]}</h1><p>{poll[`description_${language}`]}</p>
 <p class="notice">{open?(fr?'Consultation ouverte':'Consultation open'):(fr?'Consultation fermée':'Consultation closed')}</p>
-{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}<p>{fr?'Vous pouvez modifier votre choix tant que la consultation est ouverte.':'You can change your choice while the consultation is open.'}</p><p><a href="#mention-consent">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</a></p></section>}
+{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}{open&&<p><a href={`/${poll.slug}?edit=1`}>{fr?'Modifier mon choix':'Change my choice'}</a></p>}<p><a href="#mention-consent">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</a></p></section>}
 {results&&<VoteResults language={language} results={results}/>}
 {resultsError&&<p role="status">{fr?'Les résultats sont temporairement indisponibles.':'Results are temporarily unavailable.'}</p>}
-<section id="mention-consent" class="notice" aria-labelledby="mention-heading">
+{!choosing&&<section id="mention-consent" class="notice" aria-labelledby="mention-heading">
 <h2 id="mention-heading">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</h2>
 <p>{fr?'Cette autorisation est indépendante du tirage. Votre courriel reste privé; seul votre nom ou votre identifiant social peut être mentionné avec votre permission.':'This permission is independent of the draw. Your email remains private; only your name or social handle may be mentioned with your permission.'}</p>
 {participated?<form method="post" action={`/${poll.slug}/contact`}>
@@ -58,11 +59,12 @@ const open=poll&&isOpen(poll);
 <button type="submit">{fr?'Enregistrer mon autorisation de mention':'Save my mention permission'}</button>
 <p>{fr?'Vous pouvez ignorer ce formulaire. Votre vote ou proposition est déjà enregistré.':'You can skip this form. Your vote or proposal has already been saved.'}</p>
 </form>:<p>{fr?'Après avoir enregistré votre vote ou proposition, vous pourrez remplir ce formulaire facultatif ici.':'After saving your vote or proposal, you can complete this optional form here.'}</p>}
-</section>
-<form method="post"><fieldset disabled={!open}><legend>{fr?'Voter pour un modèle':'Vote for a model'}</legend><div class="cards">{options.map(option=>{const photo=safePhoto(option.image_key);const link=safeLink(option.external_url);return <article class="card">{photo&&(link?<a href={link} target="_blank" rel="noopener noreferrer" aria-label={fr?`Voir ${option.name_fr} dans un nouvel onglet`:`View ${option.name_en} in a new tab`}><img src={photo} alt={option[`name_${language}`]} loading="lazy" width="640" height="480"/></a>:<img src={photo} alt={option[`name_${language}`]} loading="lazy" width="640" height="480"/>)}<label><input type="radio" name="choice" value={option.id} required/> {option[`name_${language}`]}</label><p>{option[`description_${language}`]}</p>{link&&<a href={link} target="_blank" rel="noopener noreferrer">{fr?'Voir l’article':'View listing'} ↗</a>}</article>;})}</div></fieldset>
+</section>}
+{choosing&&<><form method="post"><fieldset disabled={!open}><legend>{fr?'Voter pour un modèle':'Vote for a model'}</legend><div class="cards">{options.map(option=>{const photo=safePhoto(option.image_key);const link=safeLink(option.external_url);return <article class="card">{photo&&(link?<a href={link} target="_blank" rel="noopener noreferrer" aria-label={fr?`Voir ${option.name_fr} dans un nouvel onglet`:`View ${option.name_en} in a new tab`}><img src={photo} alt={option[`name_${language}`]} loading="lazy" width="640" height="480"/></a>:<img src={photo} alt={option[`name_${language}`]} loading="lazy" width="640" height="480"/>)}<label><input type="radio" name="choice" value={option.id} required/> {option[`name_${language}`]}</label><p>{option[`description_${language}`]}</p>{link&&<a href={link} target="_blank" rel="noopener noreferrer">{fr?'Voir l’article':'View listing'} ↗</a>}</article>;})}</div></fieldset>
 {poll.proposal_terms_version&&<fieldset disabled={!open}><legend>{fr?'Ou proposer une idée':'Or suggest an idea'}</legend><label><input type="radio" name="choice" value="proposal"/> {fr?'Je propose une idée':'I suggest an idea'}</label><label>{fr?'Nom proposé':'Suggested name'}<input name="title" maxlength="100"/></label><label>{fr?'Description facultative':'Optional description'}<textarea name="description" maxlength="1000"></textarea></label><label><input type="checkbox" name="reuse"/> {poll[`proposal_terms_${language}`]}</label></fieldset>}
 {open&&<button type="submit">{fr?'Enregistrer mon choix':'Save my choice'}</button>}
-</form><p>{fr?'Un choix par navigateur. Aucun courriel n’est nécessaire pour voter.':'One choice per browser. Voting does not require an email.'}</p>
+</form><p>{fr?'Un choix par navigateur. Aucun courriel n’est nécessaire pour voter.':'One choice per browser. Voting does not require an email.'}</p></>}
 
-<p class="notice">{draw&&drawOpen(draw)?<a href={`/${poll.slug}/contact?draw=1`}>{fr?'Participer séparément au tirage':'Enter the draw separately'}</a>:(fr?'Le tirage est fermé.':'The draw is closed.')}</p></>}
+{!choosing&&(!draw||!drawOpen(draw))&&<p class="notice">{fr?'Le tirage est fermé.':'The draw is closed.'}</p>}
+{!choosing&&!success&&open&&<p><a href={`/${poll.slug}?edit=1`}>{fr?'Modifier mon choix':'Change my choice'}</a></p>}</>}
 </Layout>

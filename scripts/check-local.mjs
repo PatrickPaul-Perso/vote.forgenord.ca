@@ -70,6 +70,9 @@ const html = await page.text();
 assert.match(html, /Test consultation/);
 assert.ok(!html.includes(code));
 assert.ok(!html.includes('id="results-heading"'));
+assert.ok(!html.includes('id="mention-consent"'));
+assert.ok(!html.includes('name="mention"'));
+assert.match(html, /name="choice"/);
 const cookie = page.headers
   .get("set-cookie")
   .match(/forgenord_participant=[^;]+/)[0];
@@ -92,6 +95,7 @@ assert.match(confirmation, /id="results-heading"/);
 assert.match(confirmation, /100,0 %/);
 assert.match(confirmation, /name="address"/);
 assert.match(confirmation, /name="mention"/);
+assert.ok(!confirmation.includes('name="choice"'));
 assert.ok(!confirmation.includes('name="draw_contact"'));
 for (const language of ['fr','en']) {
  const reload = await fetch(site+'/'+slug+'?lang='+language, {headers:{cookie}});
@@ -102,6 +106,12 @@ for (const language of ['fr','en']) {
  assert.ok(!reloaded.includes(code));
  assert.match(reloaded,/id="results-heading"/);
 }
+const edit = await fetch(site+'/'+slug+'?edit=1', {headers:{cookie}});
+const editHtml = await edit.text();
+assert.equal(edit.status,200);
+assert.match(editHtml,/name="choice"/);
+assert.ok(!editHtml.includes('id="results-heading"'));
+assert.ok(!editHtml.includes('id="mention-consent"'));
 const secondOption = crypto.randomUUID();
 await manage({action:'option',id:secondOption,poll_id:poll,name_fr:'Deuxième modèle',name_en:'Second model',sort_order:'1',archived:'0'});
 for(let voter=0;voter<2;voter++){
