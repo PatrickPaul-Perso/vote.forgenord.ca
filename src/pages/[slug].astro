@@ -4,17 +4,18 @@ import { env } from 'cloudflare:workers';
 import Layout from '../components/Layout.astro';
 import { languageFor } from '../lib/locale';
 import { isOpen,parseChoice,saveChoice,safeLink,safePhoto,type Poll,type Option } from '../lib/polls';
-import { drawOpen, type Draw } from '../lib/contacts';
+import { drawOpen, mentionText, type Draw } from '../lib/contacts';
 import { promotionFor } from '../lib/promotion';
 const language=languageFor(Astro.request,Astro.url,Astro.cookies);const fr=language==='fr';
 Astro.response.headers.set('Cache-Control','no-store');
-let draw:Draw|null=null;let poll:Poll|null=null;let options:Option[]=[];let error='';let success=false;let promo:string|null=null;
+let participated=false;let draw:Draw|null=null;let poll:Poll|null=null;let options:Option[]=[];let error='';let success=false;let promo:string|null=null;
 let token=Astro.cookies.get('forgenord_participant')?.value;
 if(!token||!/^[0-9a-f-]{36}$/.test(token)){token=crypto.randomUUID();Astro.cookies.set('forgenord_participant',token,{path:'/',httpOnly:true,sameSite:'strict',secure:Astro.url.protocol==='https:',maxAge:31536000});}
 try{
  poll=await env.DB.prepare("SELECT * FROM polls WHERE slug=? AND status!='draft'").bind(Astro.params.slug).first<Poll>();
  if(poll) options=(await env.DB.prepare('SELECT * FROM poll_options WHERE poll_id=? AND archived=0 ORDER BY sort_order,id').bind(poll.id).all<Option>()).results;
  else Astro.response.status=404;
+ if(poll)participated=!!(await env.DB.prepare('SELECT id FROM participations WHERE poll_id=? AND participant_token=?').bind(poll.id,token).first());
  if(poll)draw=await env.DB.prepare('SELECT * FROM draws WHERE poll_id=? AND enabled=1 ORDER BY rowid DESC LIMIT 1').bind(poll.id).first<Draw>();
  if(Astro.request.method==='POST'&&poll){
   if(Astro.request.headers.get('origin')!==Astro.url.origin){Astro.response.status=403;error=fr?'Origine de la demande invalide.':'Invalid request origin.';}
@@ -25,7 +26,7 @@ try{
    if(body.length>12000){Astro.response.status=413;error=fr?'Formulaire trop volumineux.':'Form is too large.';}
    else {const form=new FormData();new URLSearchParams(body).forEach((value,key)=>form.append(key,value));const choice=parseChoice(form,options,poll);
     if(!choice){Astro.response.status=400;error=fr?'Vérifiez votre choix et l’autorisation de réutilisation pour une proposition.':'Check your choice and the reuse permission for a proposal.';}
-    else {await saveChoice(env.DB,poll,token,choice,language);success=true;promo=await promotionFor(env.DB,poll.id,token);}
+    else {await saveChoice(env.DB,poll,token,choice,language);success=true;participated=true;promo=await promotionFor(env.DB,poll.id,token);}
    }
   }
  }
@@ -37,10 +38,23 @@ const open=poll&&isOpen(poll);
 {!poll&&!error&&<h1>{fr?'Consultation introuvable':'Consultation not found'}</h1>}
 {poll&&<><p>{poll.organization}</p><h1>{poll[`title_${language}`]}</h1><p>{poll[`description_${language}`]}</p>
 <p class="notice">{open?(fr?'Consultation ouverte':'Consultation open'):(fr?'Consultation fermée':'Consultation closed')}</p>
-{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}<p>{fr?'Vous pouvez modifier votre choix tant que la consultation est ouverte.':'You can change your choice while the consultation is open.'}</p><p><a href={`/${poll.slug}/contact`}>{fr?'Autoriser une mention de mon nom ou compte (facultatif)':'Authorize a mention of my name or account (optional)'}</a></p></section>}
+{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}<p>{fr?'Vous pouvez modifier votre choix tant que la consultation est ouverte.':'You can change your choice while the consultation is open.'}</p><p><a href="#mention-consent">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</a></p></section>}
+<section id="mention-consent" class="notice" aria-labelledby="mention-heading">
+<h2 id="mention-heading">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</h2>
+<p>{fr?'Cette autorisation est indépendante du tirage. Votre courriel reste privé; seul votre nom ou votre identifiant social peut être mentionné avec votre permission.':'This permission is independent of the draw. Your email remains private; only your name or social handle may be mentioned with your permission.'}</p>
+{participated?<form method="post" action={`/${poll.slug}/contact`}>
+<label>{fr?'Nom à mentionner (requis si vous fournissez un courriel)':'Name to mention (required if you provide an email)'}<input name="display_name" maxlength="80"/></label>
+<label>{fr?'Moyen de contact':'Contact method'}<select name="channel"><option value="email">{fr?'Courriel':'Email'}</option><option value="tiktok">TikTok</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select></label>
+<label>{fr?'Courriel ou identifiant du compte':'Email or account handle'}<input name="address" maxlength="254" required/></label>
+<label><input type="checkbox" name="mention" required/> {mentionText(poll.organization)[language]}</label>
+<button type="submit">{fr?'Enregistrer mon autorisation de mention':'Save my mention permission'}</button>
+<p>{fr?'Vous pouvez ignorer ce formulaire. Votre vote ou proposition est déjà enregistré.':'You can skip this form. Your vote or proposal has already been saved.'}</p>
+</form>:<p>{fr?'Après avoir enregistré votre vote ou proposition, vous pourrez remplir ce formulaire facultatif ici.':'After saving your vote or proposal, you can complete this optional form here.'}</p>}
+</section>
 <form method="post"><fieldset disabled={!open}><legend>{fr?'Voter pour un modèle':'Vote for a model'}</legend><div class="cards">{options.map(option=>{const photo=safePhoto(option.image_key);const link=safeLink(option.external_url);return <article class="card">{photo&&<img src={photo} alt={option[`name_${language}`]} loading="lazy" width="640" height="480"/>}<label><input type="radio" name="choice" value={option.id} required/> {option[`name_${language}`]}</label><p>{option[`description_${language}`]}</p>{link&&<a href={link} target="_blank" rel="noopener noreferrer">{fr?'Voir l’article':'View listing'} ↗</a>}</article>;})}</div></fieldset>
 {poll.proposal_terms_version&&<fieldset disabled={!open}><legend>{fr?'Ou proposer une idée':'Or suggest an idea'}</legend><label><input type="radio" name="choice" value="proposal"/> {fr?'Je propose une idée':'I suggest an idea'}</label><label>{fr?'Nom proposé':'Suggested name'}<input name="title" maxlength="100"/></label><label>{fr?'Description facultative':'Optional description'}<textarea name="description" maxlength="1000"></textarea></label><label><input type="checkbox" name="reuse"/> {poll[`proposal_terms_${language}`]}</label></fieldset>}
 {open&&<button type="submit">{fr?'Enregistrer mon choix':'Save my choice'}</button>}
 </form><p>{fr?'Un choix par navigateur. Effacer les cookies permet de participer à nouveau. Aucun courriel n’est nécessaire pour voter.':'One choice per browser. Clearing cookies allows another entry. Voting does not require an email.'}</p>
+
 <p class="notice">{draw&&drawOpen(draw)?<a href={`/${poll.slug}/contact?draw=1`}>{fr?'Participer séparément au tirage':'Enter the draw separately'}</a>:(fr?'Le tirage est fermé.':'The draw is closed.')}</p></>}
 </Layout>

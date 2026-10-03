@@ -91,3 +91,5 @@ Pour ouvrir un tirage : réviser et publier ses modalités FR/EN dans les champs
 La gestion de la D1 de production depuis cette interface est reportée; l’interface MVP gère la simulation locale. Le déploiement public et les opérations distantes restent soumis à autorisation explicite. Définir la durée de conservation des coordonnées et valider les textes avant d’ouvrir la collecte en production.
 
 Vérification HTTP locale avec des données synthétiques (création d’une consultation temporaire ensuite remise en brouillon) : `docker compose exec app node scripts/check-local.mjs`. Arrêter les serveurs avant le build pour éviter une concurrence sur le cache Vite.
+
+Après un vote ou une proposition enregistré, le formulaire facultatif « Coordonnées et autorisation de mention » apparaît directement sur la consultation et reste accessible après rechargement dans le même navigateur. Il est indépendant du tirage et ne conditionne ni le vote ni le code promotionnel.

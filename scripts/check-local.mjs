@@ -85,7 +85,19 @@ async function submit(path, values) {
 }
 const vote = await submit("/" + slug, { choice: option });
 assert.equal(vote.status, 200);
-assert.ok((await vote.text()).includes(code));
+const confirmation = await vote.text();
+assert.ok(confirmation.includes(code));
+assert.match(confirmation, /name="address"/);
+assert.match(confirmation, /name="mention"/);
+assert.ok(!confirmation.includes('name="draw_contact"'));
+for (const language of ['fr','en']) {
+ const reload = await fetch(site+'/'+slug+'?lang='+language, {headers:{cookie}});
+ assert.equal(reload.status,200);
+ const reloaded = await reload.text();
+ assert.match(reloaded,/name="mention"/);
+ assert.match(reloaded,/name="address"/);
+ assert.ok(!reloaded.includes(code));
+}
 const bad = await submit("/" + slug, {
   choice: "proposal",
   title: "New model",
