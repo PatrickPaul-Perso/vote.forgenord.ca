@@ -1,6 +1,6 @@
 -- Local-only draft; names and descriptions require editorial validation before publication.
 INSERT OR IGNORE INTO polls(id,slug,organization,title_fr,title_en,description_fr,description_en)
-VALUES ('demo-creation','giocoso-creation','Giocoso Creation','Modèles Giocoso Creation','Giocoso Creation models','Démonstration locale — contenu à valider.','Local demonstration — content awaiting review.');
+VALUES ('demo-creation','giocoso-creation','Giocoso Creation','Modèles Giocoso Creation','Giocoso Creation models','','');
 INSERT OR IGNORE INTO poll_options(id,poll_id,name_fr,name_en,image_key,sort_order) VALUES
 ('altitude','demo-creation','Altitude','Altitude','altitude.jpg',1),
 ('cardinal','demo-creation','Cardinal','Cardinal','cardinal.jpg',2),
