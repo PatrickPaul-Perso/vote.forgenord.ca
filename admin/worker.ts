@@ -1,5 +1,6 @@
-import { limitedBody } from "../src/lib/request";
-import { safeLink, safePhoto } from "../src/lib/polls";
+import { AdminDatabase, remoteReady, type AdminEnv } from "./database.ts";
+import { limitedBody } from "../src/lib/request.ts";
+import { safeLink, safePhoto } from "../src/lib/polls.ts";
 const escape = (value: unknown) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -48,8 +49,13 @@ type Row = Record<string, string | number | null>;
 function input(name: string, value: unknown) {
   return `<label>${escape(name)} <input name="${name}" value="${escape(value)}" maxlength="5000"></label>`;
 }
-function form(action: string, id: unknown, body: string) {
-  return `<form method="post"><input type="hidden" name="action" value="${action}"><input type="hidden" name="id" value="${escape(id)}">${body}<button>Enregistrer</button></form>`;
+function renderForm(
+  action: string,
+  id: unknown,
+  body: string,
+  target: "local" | "remote",
+) {
+  return `<form method="post" action="?target=${target}"><input type="hidden" name="target" value="${target}"><input type="hidden" name="action" value="${action}"><input type="hidden" name="id" value="${escape(id)}">${body}<button>Enregistrer</button></form>`;
 }
 function validateDate(value: string) {
   if (value && !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(value))
@@ -58,10 +64,22 @@ function validateDate(value: string) {
     throw Error("Date invalide.");
 }
 export default {
-  async fetch(request: Request, env: Pick<Env, "DB">): Promise<Response> {
+  async fetch(request: Request, env: AdminEnv): Promise<Response> {
     const url = new URL(request.url);
     if (!["localhost", "127.0.0.1", "admin"].includes(url.hostname))
       return new Response("Local only", { status: 403 });
+    const selected = url.searchParams.get("target") ?? "local";
+    if (selected !== "local" && selected !== "remote")
+      return new Response("Cible invalide.", { status: 400 });
+    const target = selected;
+    if (target === "remote" && !remoteReady(env))
+      return new Response(
+        "Accès distant indisponible. Transmettez le jeton, le compte et la configuration D1 au conteneur.",
+        { status: 503 },
+      );
+    const database = new AdminDatabase(env, target);
+    const form = (action: string, id: unknown, body: string) =>
+      renderForm(action, id, body, target);
     let message = "";
     let status = 200;
     try {
@@ -71,6 +89,8 @@ export default {
         const body = await limitedBody(request, 40000);
         if (body === null) throw Error("Formulaire trop volumineux.");
         const data = new URLSearchParams(body);
+        if (target === "remote" && data.get("target") !== target)
+          throw Error("Cible distante non confirmée.");
         const action = data.get("action");
         const id = data.get("id") || crypto.randomUUID();
         if (action === "promo") {
@@ -81,20 +101,23 @@ export default {
           validateDate(end);
           if (!start || !end || start >= end)
             throw Error("Période promotionnelle invalide.");
-          await env.DB.batch(
+          await database.batch(
             ["promo_code", "promo_starts_at", "promo_ends_at"].map((key) =>
-              env.DB.prepare(
-                "INSERT INTO poll_parameters(poll_id,key,value) VALUES (?,?,?) ON CONFLICT(poll_id,key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP",
-              ).bind(poll, key, data.get(key) ?? ""),
+              database
+                .prepare(
+                  "INSERT INTO poll_parameters(poll_id,key,value) VALUES (?,?,?) ON CONFLICT(poll_id,key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP",
+                )
+                .bind(poll, key, data.get(key) ?? ""),
             ),
           );
         } else if (action === "proposal") {
           const review = data.get("moderation_status");
           if (!["pending", "approved", "rejected"].includes(review ?? ""))
             throw Error("Statut invalide.");
-          await env.DB.prepare(
-            "UPDATE proposals SET moderation_status=? WHERE participation_id=?",
-          )
+          await database
+            .prepare(
+              "UPDATE proposals SET moderation_status=? WHERE participation_id=?",
+            )
             .bind(review, id)
             .run();
         } else if (
@@ -122,9 +145,8 @@ export default {
               )
             )
               throw Error("Organisme, titres et statut requis.");
-            const exists = await env.DB.prepare(
-              "SELECT id FROM polls WHERE id=?",
-            )
+            const exists = await database
+              .prepare("SELECT id FROM polls WHERE id=?")
               .bind(id)
               .first();
             if (!exists) {
@@ -134,9 +156,10 @@ export default {
                 ["api", "models", "404"].includes(slug)
               )
                 throw Error("Slug invalide ou réservé.");
-              await env.DB.prepare(
-                "INSERT INTO polls(id,slug,organization,title_fr,title_en) VALUES (?,?,?,?,?)",
-              )
+              await database
+                .prepare(
+                  "INSERT INTO polls(id,slug,organization,title_fr,title_en) VALUES (?,?,?,?,?)",
+                )
                 .bind(
                   id,
                   slug,
@@ -176,15 +199,17 @@ export default {
             nullable.includes(names[index]) && !value ? null : value,
           );
           if (action === "poll")
-            await env.DB.prepare(
-              `UPDATE polls SET ${names.map((name) => name + "=?").join(",")} WHERE id=?`,
-            )
+            await database
+              .prepare(
+                `UPDATE polls SET ${names.map((name) => name + "=?").join(",")} WHERE id=?`,
+              )
               .bind(...binds, id)
               .run();
           else
-            await env.DB.prepare(
-              `INSERT INTO ${table}(id,${names.join(",")}) VALUES (?,${names.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${names.map((name) => name + "=excluded." + name).join(",")}`,
-            )
+            await database
+              .prepare(
+                `INSERT INTO ${table}(id,${names.join(",")}) VALUES (?,${names.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${names.map((name) => name + "=excluded." + name).join(",")}`,
+              )
               .bind(id, ...binds)
               .run();
         } else throw Error("Action invalide.");
@@ -207,7 +232,7 @@ export default {
             "consents",
             "draw_entries",
           ].map((table) =>
-            env.DB.prepare(`SELECT * FROM ${table} LIMIT 200`).all<Row>(),
+            database.prepare(`SELECT * FROM ${table} LIMIT 200`).all<Row>(),
           ),
         );
       const editors = (kind: "poll" | "option" | "draw", rows: Row[]) =>
@@ -223,7 +248,7 @@ export default {
             ),
           )
           .join("");
-      const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Gestion locale ForgeNord Vote</title><style>body{font:16px system-ui;max-width:950px;margin:auto;padding:20px}form{border:1px solid #ccc;padding:15px;margin:20px 0}label{display:block;margin:8px}input{width:95%}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Gestion locale ForgeNord Vote</h1><p>Interface locale. Dates UTC ISO 8601; statut draft/published/closed; enabled et archived : 0 ou 1. Ne valider les modalités qu’après révision humaine. Les noms des champs correspondent aux données enregistrées.</p><p role="status">${escape(message)}</p><h2>Consultations</h2>${editors("poll", polls.results)}<h3>Nouvelle consultation</h3>${form("poll", "", input("slug", "") + fields.poll.map((name) => input(name, name === "status" ? "draft" : "")).join(""))}<h2>Options</h2>${editors("option", options.results)}${form("option", "", fields.option.map((name) => input(name, ["sort_order", "archived"].includes(name) ? "0" : "")).join(""))}<h2>Promotion</h2><p>La valeur existante n’est pas affichée. Saisir le code et sa période pour le remplacer; un code vide le désactive.</p>${form("promo", "", ["poll_id", "promo_code", "promo_starts_at", "promo_ends_at"].map((name) => input(name, "")).join(""))}<h2>Propositions privées</h2>${proposals.results.map((row) => `<pre>${escape(JSON.stringify(row, null, 2))}</pre>` + form("proposal", row.participation_id, input("moderation_status", row.moderation_status))).join("")}<h2>Tirages</h2>${editors("draw", draws.results)}${form("draw", "", fields.draw.map((name) => input(name, name === "enabled" ? "0" : "")).join(""))}<h2>Coordonnées, permissions et inscriptions privées</h2><pre>${escape(JSON.stringify({ contacts: contacts.results, consents: consents.results, entries: entries.results }, null, 2))}</pre></html>`;
+      const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Gestion locale ForgeNord Vote</title><style>body{font:16px system-ui;max-width:950px;margin:auto;padding:20px}form{border:1px solid #ccc;padding:15px;margin:20px 0}label{display:block;margin:8px}input{width:95%}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Gestion locale ForgeNord Vote</h1><form method="get"><label>Base de données <select name="target"><option value="local" ${target === "local" ? "selected" : ""}>Locale</option><option value="remote" ${target === "remote" ? "selected" : ""} ${remoteReady(env) ? "" : "disabled"}>Cloudflare — distante</option></select></label><button>Afficher cette base</button></form><p class="target" role="status">${target === "remote" ? "Base Cloudflare : les enregistrements modifient immédiatement les données de production." : "Base locale : les enregistrements restent sur cet ordinateur."}</p><p>Interface locale. Dates UTC ISO 8601; statut draft/published/closed; enabled et archived : 0 ou 1. Ne valider les modalités qu’après révision humaine. Les noms des champs correspondent aux données enregistrées.</p><p role="status">${escape(message)}</p><h2>Consultations</h2>${editors("poll", polls.results)}<h3>Nouvelle consultation</h3>${form("poll", "", input("slug", "") + fields.poll.map((name) => input(name, name === "status" ? "draft" : "")).join(""))}<h2>Options</h2>${editors("option", options.results)}${form("option", "", fields.option.map((name) => input(name, ["sort_order", "archived"].includes(name) ? "0" : "")).join(""))}<h2>Promotion</h2><p>La valeur existante n’est pas affichée. Saisir le code et sa période pour le remplacer; un code vide le désactive.</p>${form("promo", "", ["poll_id", "promo_code", "promo_starts_at", "promo_ends_at"].map((name) => input(name, "")).join(""))}<h2>Propositions privées</h2>${proposals.results.map((row) => `<pre>${escape(JSON.stringify(row, null, 2))}</pre>` + form("proposal", row.participation_id, input("moderation_status", row.moderation_status))).join("")}<h2>Tirages</h2>${editors("draw", draws.results)}${form("draw", "", fields.draw.map((name) => input(name, name === "enabled" ? "0" : "")).join(""))}<h2>Coordonnées, permissions et inscriptions privées</h2><pre>${escape(JSON.stringify({ contacts: contacts.results, consents: consents.results, entries: entries.results }, null, 2))}</pre></html>`;
       return new Response(html, {
         status,
         headers: {
@@ -235,7 +260,7 @@ export default {
       });
     } catch {
       return new Response(
-        "Gestion indisponible. Appliquez les migrations locales.",
+        "Gestion indisponible. Vérifiez la connexion et les migrations de la base sélectionnée.",
         { status: 503 },
       );
     }

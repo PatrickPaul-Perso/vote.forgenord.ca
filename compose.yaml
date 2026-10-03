@@ -20,6 +20,9 @@ services:
     environment:
       npm_config_cache: /tmp/npm-cache
       WRANGLER_SEND_METRICS: "false"
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+      FORGENORD_D1_DATABASE_ID: ${FORGENORD_D1_DATABASE_ID:-}
     ports:
       - "127.0.0.1:${FORGENORD_ADMIN_PORT:-8790}:8788"
-    command: npx wrangler dev --config admin/wrangler.jsonc --local --persist-to /app/.wrangler/state --ip 0.0.0.0 --port 8788
+    command: node admin/start.mjs
