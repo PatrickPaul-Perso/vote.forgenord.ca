@@ -93,3 +93,5 @@ La gestion de la D1 de production depuis cette interface est reportée; l’inte
 Vérification HTTP locale avec des données synthétiques (création d’une consultation temporaire ensuite remise en brouillon) : `docker compose exec app node scripts/check-local.mjs`. Arrêter les serveurs avant le build pour éviter une concurrence sur le cache Vite.
 
 Après un vote ou une proposition enregistré, le formulaire facultatif « Coordonnées et autorisation de mention » apparaît directement sur la consultation et reste accessible après rechargement dans le même navigateur. Il est indépendant du tirage et ne conditionne ni le vote ni le code promotionnel.
+
+Les photos des options ouvrent leur lien externe HTTPS dans un nouvel onglet lorsque `external_url` est renseigné dans la gestion. Pour Giocoso Creation, saisir l’URL de la fiche Etsy correspondante. Sans lien valide, la photo reste affichée sans lien.
