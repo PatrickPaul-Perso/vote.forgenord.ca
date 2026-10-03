@@ -1,5 +1,10 @@
 ---
-const lang = Astro.request.headers.get('accept-language')?.startsWith('en') ? 'en' : 'fr';
-Astro.response.headers.set('Cache-Control', 'no-store');
+import { env } from 'cloudflare:workers';
+import Layout from '../components/Layout.astro';
+import { languageFor } from '../lib/locale';
+import type { Poll } from '../lib/polls';
+const language=languageFor(Astro.request,Astro.url,Astro.cookies);let polls:Poll[]=[];let error=false;
+Astro.response.headers.set('Cache-Control','no-store');
+try{polls=(await env.DB.prepare("SELECT slug,title_fr,title_en FROM polls WHERE status!='draft' ORDER BY created_at DESC").all<Poll>()).results;}catch{error=true;Astro.response.status=503;}
 ---
-<!doctype html><html lang={lang}><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width"/><title>ForgeNord Vote</title></head><body><main><h1>ForgeNord Vote</h1><p>{lang === 'fr' ? 'La plateforme de consultations se prépare.' : 'The consultation platform is being prepared.'}</p></main></body></html>
+<Layout language={language} title={language==='fr'?'Consultations':'Consultations'}><h1>ForgeNord Vote</h1>{error?<p role="alert">{language==='fr'?'Le service est temporairement indisponible.':'The service is temporarily unavailable.'}</p>:polls.length?<ul>{polls.map(poll=><li><a href={`/${poll.slug}`}>{poll[`title_${language}`]}</a></li>)}</ul>:<p>{language==='fr'?'Aucune consultation publiée pour le moment.':'No consultations have been published yet.'}</p>}</Layout>

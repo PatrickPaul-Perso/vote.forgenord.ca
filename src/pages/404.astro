@@ -1,0 +1,6 @@
+---
+import Layout from '../components/Layout.astro';
+import { languageFor } from '../lib/locale';
+const language=languageFor(Astro.request,Astro.url,Astro.cookies);
+---
+<Layout language={language} title={language==='fr'?'Page introuvable':'Page not found'}><h1>{language==='fr'?'Page introuvable':'Page not found'}</h1><a href="/">{language==='fr'?'Voir les consultations':'View consultations'}</a></Layout>
