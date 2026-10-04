@@ -46,8 +46,33 @@ const fields = {
   ],
 } as const;
 type Row = Record<string, string | number | null>;
+const labels: Record<string, string> = {
+  organization: "Organisme", title_fr: "Titre en français", title_en: "Titre en anglais",
+  description_fr: "Description en français", description_en: "Description en anglais",
+  status: "État", opens_at: "Ouverture (UTC)", closes_at: "Fermeture (UTC)",
+  proposal_terms_fr: "Autorisation des propositions en français", proposal_terms_en: "Autorisation des propositions en anglais",
+  proposal_terms_version: "Version de l’autorisation", poll_id: "Consultation",
+  name_fr: "Nom en français", name_en: "Nom en anglais", image_key: "Chemin de la photo",
+  external_url: "Lien externe HTTPS", sort_order: "Ordre d’affichage", archived: "Option archivée",
+  enabled: "Tirage activé", terms_fr: "Modalités en français", terms_en: "Modalités en anglais",
+  terms_version: "Version des modalités", validated_at: "Validation des modalités (UTC)",
+  slug: "Adresse publique (slug)", promo_code: "Code promotionnel",
+  promo_starts_at: "Début de la promotion (UTC)", promo_ends_at: "Fin de la promotion (UTC)",
+  moderation_status: "Modération",
+};
+const choices: Record<string, Record<string, string>> = {
+  status: { draft: "Brouillon", published: "Publiée", closed: "Fermée" },
+  enabled: { "0": "Non", "1": "Oui — modalités validées" },
+  archived: { "0": "Non", "1": "Oui" },
+  moderation_status: { pending: "À examiner", approved: "Approuvée", rejected: "Refusée" },
+};
 function input(name: string, value: unknown) {
-  return `<label>${escape(name)} <input name="${name}" value="${escape(value)}" maxlength="5000"></label>`;
+  const label = escape(labels[name] ?? name);
+  if (choices[name]) return `<label>${label}<select name="${name}">${Object.entries(choices[name]).map(([key, title]) => `<option value="${key}" ${String(value) === key ? "selected" : ""}>${title}</option>`).join("")}</select></label>`;
+  if (name.includes("description") || name.includes("terms_fr") || name.includes("terms_en"))
+    return `<label>${label}<textarea name="${name}" maxlength="5000" rows="3">${escape(value)}</textarea></label>`;
+  const date = name.endsWith("_at");
+  return `<label>${label}<input name="${name}" type="${date ? "datetime-local" : "text"}" ${date ? 'step="0.001"' : 'maxlength="5000"'} value="${escape(date ? String(value ?? "").replace(/Z$/, "") : value)}"></label>`;
 }
 function renderForm(
   action: string,
@@ -91,6 +116,12 @@ export default {
         const data = new URLSearchParams(body);
         if (target === "remote" && data.get("target") !== target)
           throw Error("Cible distante non confirmée.");
+        // The date pickers display UTC, independently of the browser timezone.
+        for (const name of ["opens_at", "closes_at", "validated_at", "promo_starts_at", "promo_ends_at"]) {
+          const value = data.get(name);
+          if (value && /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{3})?)?$/.test(value))
+            data.set(name, value + (value.length === 16 ? ":00Z" : "Z"));
+        }
         const action = data.get("action");
         const id = data.get("id") || crypto.randomUUID();
         if (action === "promo") {
@@ -99,7 +130,7 @@ export default {
           const end = data.get("promo_ends_at") ?? "";
           validateDate(start);
           validateDate(end);
-          if (!start || !end || start >= end)
+          if (!start || !end || Date.parse(start) >= Date.parse(end))
             throw Error("Période promotionnelle invalide.");
           await database.batch(
             ["promo_code", "promo_starts_at", "promo_ends_at"].map((key) =>
@@ -132,7 +163,7 @@ export default {
           if (
             data.get("opens_at") &&
             data.get("closes_at") &&
-            data.get("opens_at")! >= data.get("closes_at")!
+            Date.parse(data.get("opens_at")!) >= Date.parse(data.get("closes_at")!)
           )
             throw Error("Période invalide.");
           if (action === "poll") {
@@ -235,6 +266,13 @@ export default {
             database.prepare(`SELECT * FROM ${table} LIMIT 200`).all<Row>(),
           ),
         );
+      const parameters = await database.prepare("SELECT poll_id,key,value FROM poll_parameters WHERE key IN ('promo_code','promo_starts_at','promo_ends_at')").all<Row>();
+      const pollSelect = (value: unknown) => `<label>Consultation<select name="poll_id" required><option value="">Choisir une consultation</option>${polls.results.map(row => `<option value="${escape(row.id)}" ${row.id === value ? "selected" : ""}>${escape(row.title_fr)} — ${escape(row.slug)}</option>`).join("")}</select></label>`;
+      const field = (name: string, value: unknown) => name === "poll_id" ? pollSelect(value) : input(name, value);
+      const promotions = polls.results.map(poll => {
+        const values = Object.fromEntries(parameters.results.filter(row => row.poll_id === poll.id).map(row => [row.key, row.value]));
+        return `<article><h3>${escape(poll.title_fr)}</h3><p>${values.promo_code ? "Code configuré" : "Aucun code actif"}</p>` + form("promo", "", `<input type="hidden" name="poll_id" value="${escape(poll.id)}"><details><summary>Afficher ou modifier le code promotionnel</summary>${input("promo_code", values.promo_code)}</details>${input("promo_starts_at", values.promo_starts_at)}${input("promo_ends_at", values.promo_ends_at)}<p class="hint">Un code vide désactive la promotion. Les dates sont en UTC.</p>`) + `</article>`;
+      }).join("");
       const editors = (kind: "poll" | "option" | "draw", rows: Row[]) =>
         rows
           .map((row) =>
@@ -243,12 +281,24 @@ export default {
               row.id,
               kind === "poll"
                 ? `<p>Slug stable : ${escape(row.slug)}</p>` +
-                    fields[kind].map((name) => input(name, row[name])).join("")
-                : fields[kind].map((name) => input(name, row[name])).join(""),
+                    fields[kind].map((name) => field(name, row[name])).join("")
+                : fields[kind].map((name) => field(name, row[name])).join(""),
             ),
           )
           .join("");
-      const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Gestion locale ForgeNord Vote</title><style>body{font:16px system-ui;max-width:950px;margin:auto;padding:20px}form{border:1px solid #ccc;padding:15px;margin:20px 0}label{display:block;margin:8px}input{width:95%}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Gestion locale ForgeNord Vote</h1><form method="get"><label>Base de données <select name="target"><option value="local" ${target === "local" ? "selected" : ""}>Locale</option><option value="remote" ${target === "remote" ? "selected" : ""} ${remoteReady(env) ? "" : "disabled"}>Cloudflare — distante</option></select></label><button>Afficher cette base</button></form><p class="target" role="status">${target === "remote" ? "Base Cloudflare : les enregistrements modifient immédiatement les données de production." : "Base locale : les enregistrements restent sur cet ordinateur."}</p><p>Interface locale. Dates UTC ISO 8601; statut draft/published/closed; enabled et archived : 0 ou 1. Ne valider les modalités qu’après révision humaine. Les noms des champs correspondent aux données enregistrées.</p><p role="status">${escape(message)}</p><h2>Consultations</h2>${editors("poll", polls.results)}<h3>Nouvelle consultation</h3>${form("poll", "", input("slug", "") + fields.poll.map((name) => input(name, name === "status" ? "draft" : "")).join(""))}<h2>Options</h2>${editors("option", options.results)}${form("option", "", fields.option.map((name) => input(name, ["sort_order", "archived"].includes(name) ? "0" : "")).join(""))}<h2>Promotion</h2><p>La valeur existante n’est pas affichée. Saisir le code et sa période pour le remplacer; un code vide le désactive.</p>${form("promo", "", ["poll_id", "promo_code", "promo_starts_at", "promo_ends_at"].map((name) => input(name, "")).join(""))}<h2>Propositions privées</h2>${proposals.results.map((row) => `<pre>${escape(JSON.stringify(row, null, 2))}</pre>` + form("proposal", row.participation_id, input("moderation_status", row.moderation_status))).join("")}<h2>Tirages</h2>${editors("draw", draws.results)}${form("draw", "", fields.draw.map((name) => input(name, name === "enabled" ? "0" : "")).join(""))}<h2>Coordonnées, permissions et inscriptions privées</h2><pre>${escape(JSON.stringify({ contacts: contacts.results, consents: consents.results, entries: entries.results }, null, 2))}</pre></html>`;
+      const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gestion ForgeNord Vote</title><style>
+      *{box-sizing:border-box}body{font:16px/1.5 system-ui;background:#f4f6fa;color:#192b3b;max-width:1100px;margin:auto;padding:24px}h1{margin-bottom:4px}h2{margin-top:36px}nav{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0}a{color:#125b7b}form,article{background:white;border:1px solid #d6dfe7;border-radius:12px;padding:20px;margin:16px 0}article form{border:0;padding:0}label{display:block;margin:14px 0;font-weight:600}input,select,textarea{display:block;width:100%;font:inherit;border:1px solid #aab9c6;border-radius:6px;padding:10px;margin-top:5px}button{font:inherit;font-weight:600;background:#125b7b;color:white;border:0;border-radius:6px;padding:10px 18px;cursor:pointer}button:hover{background:#093e56}input:focus,select:focus,textarea:focus,button:focus,summary:focus{outline:3px solid #df9d25;outline-offset:2px}summary{cursor:pointer;font-weight:600;padding:8px 0}.target,.message{padding:16px;border-radius:8px;background:#dceef7}.remote{background:#fff0d1;border:2px solid #b86c00}.error{background:#ffe0df}.hint{color:#536777;font-size:.9rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}section{scroll-margin-top:20px}
+      </style></head><body><header><h1>Gestion ForgeNord Vote</h1><p>Gérez vos consultations et leurs promotions.</p></header>
+      <form method="get"><label>Base de données<select name="target"><option value="local" ${target === "local" ? "selected" : ""}>Locale — cet ordinateur</option><option value="remote" ${target === "remote" ? "selected" : ""} ${remoteReady(env) ? "" : "disabled"}>Cloudflare — production</option></select></label><button>Afficher cette base</button></form>
+      <p class="target ${target === "remote" ? "remote" : ""}" role="status"><strong>${target === "remote" ? "PRODUCTION" : "BASE LOCALE"}</strong> — ${target === "remote" ? "Les enregistrements modifient immédiatement les données de production." : "Les modifications restent sur cet ordinateur."}</p>
+      <nav aria-label="Sections de gestion"><a href="#promotions">Promotions</a><a href="#consultations">Consultations</a><a href="#options">Options</a><a href="#propositions">Propositions</a><a href="#tirages">Tirages</a><a href="#coordonnees">Coordonnées</a></nav>
+      ${message ? `<p class="message ${status === 400 ? "error" : ""}" role="${status === 400 ? "alert" : "status"}">${escape(message)}</p>` : ""}
+      <section id="promotions"><h2>Promotions</h2><p>Modifiez le code et sa période dans la consultation concernée. Aucun build nécessaire.</p>${promotions || "<p>Créez d’abord une consultation.</p>"}</section>
+      <section id="consultations"><h2>Consultations</h2>${editors("poll", polls.results)}<details><summary>Créer une consultation</summary>${form("poll", "", input("slug", "") + fields.poll.map((name) => field(name, name === "status" ? "draft" : "")).join(""))}</details></section>
+      <section id="options"><h2>Options</h2>${editors("option", options.results)}<details><summary>Ajouter une option</summary>${form("option", "", fields.option.map((name) => field(name, ["sort_order", "archived"].includes(name) ? "0" : "")).join(""))}</details></section>
+      <section id="propositions"><h2>Propositions privées</h2>${proposals.results.map(row => `<pre>${escape(JSON.stringify(row, null, 2))}</pre>` + form("proposal", row.participation_id, input("moderation_status", row.moderation_status))).join("")}</section>
+      <section id="tirages"><h2>Tirages</h2><p>Ne validez les modalités qu’après révision humaine.</p>${editors("draw", draws.results)}<details><summary>Créer un tirage</summary>${form("draw", "", fields.draw.map((name) => field(name, name === "enabled" ? "0" : "")).join(""))}</details></section>
+      <section id="coordonnees"><h2>Coordonnées et permissions privées</h2><details><summary>Afficher les coordonnées, permissions et inscriptions</summary><pre>${escape(JSON.stringify({ contacts: contacts.results, consents: consents.results, entries: entries.results }, null, 2))}</pre></details></section></body></html>`;
       return new Response(html, {
         status,
         headers: {
