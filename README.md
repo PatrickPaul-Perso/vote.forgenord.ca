@@ -38,7 +38,7 @@ Les tirages sont fermés par défaut. La base refuse leur activation sans modali
 
 ## Code promotionnel
 
-La table `poll_parameters` contient, par consultation, `promo_code`, `promo_starts_at` et `promo_ends_at`. Aucun code réel ni code de démonstration n’est versionné. La fonction serveur `promotionFor` exige une participation existante et une période valide avant de retourner le code. L’écran de confirmation utilise cette fonction avec une réponse `Cache-Control: no-store`.
+La table `poll_parameters` contient, par consultation, `promo_code`, `promo_starts_at` et `promo_ends_at`. Aucun code réel ni code de démonstration n’est versionné. La fonction serveur `promotionFor` exige une participation existante et une période valide avant de retourner le code. L’écran de confirmation utilise cette fonction avec une réponse `Cache-Control: no-store`. Lorsque le code est affiché, il précise le rabais de 20 % sur une décoration murale et affiche le lien externe HTTPS validé du modèle choisi, s’il est renseigné (fiche Etsy pour Giocoso Creation).
 
 Le code sera nécessairement visible dans le HTML de confirmation fourni à la personne; il n’est pas un secret individuel. Il ne doit apparaître ni dans les sources Astro, ni dans le bundle client, ni dans les logs. Sa validité effective et son utilisation restent contrôlées dans Etsy. L’expiration ne ferme pas la consultation. La saisie se fait dans la gestion locale; aucun éditeur SQL libre n’est prévu.
 
