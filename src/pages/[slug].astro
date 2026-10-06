@@ -12,6 +12,7 @@ const language=languageFor(Astro.request,Astro.url,Astro.cookies);const fr=langu
 Astro.response.headers.set('Cache-Control','no-store');
 type SavedChoice={choice_type:'vote'|'proposal';name_fr:string|null;name_en:string|null;title:string|null};
 let savedChoice:SavedChoice|null=null;
+let selectedOption:Option|null=null;
 let participated=false;let draw:Draw|null=null;let poll:Poll|null=null;let options:Option[]=[];let error='';let success=false;let promo:string|null=null;
 let token=Astro.cookies.get('forgenord_participant')?.value;
 if(!token||!/^[0-9a-f-]{36}$/.test(token)){token=crypto.randomUUID();Astro.cookies.set('forgenord_participant',token,{path:'/',httpOnly:true,sameSite:'strict',secure:Astro.url.protocol==='https:',maxAge:31536000});}
@@ -30,7 +31,7 @@ try{
    if(body.length>12000){Astro.response.status=413;error=fr?'Formulaire trop volumineux.':'Form is too large.';}
    else {const form=new FormData();new URLSearchParams(body).forEach((value,key)=>form.append(key,value));const choice=parseChoice(form,options,poll);
     if(!choice){Astro.response.status=400;error=fr?'Vérifiez votre choix et l’autorisation de réutilisation pour une proposition.':'Check your choice and the reuse permission for a proposal.';}
-    else {await saveChoice(env.DB,poll,token,choice,language);success=true;participated=true;promo=await promotionFor(env.DB,poll.id,token);}
+    else {await saveChoice(env.DB,poll,token,choice,language);success=true;participated=true;selectedOption=options.find(option=>option.id===choice.option)??null;promo=await promotionFor(env.DB,poll.id,token);}
    }
   }
  }
@@ -44,13 +45,14 @@ if(poll&&participated&&!choosing){
  try{results=await loadVoteResults(env.DB,poll.id);}catch{resultsError=true;}
 }
 const open=poll&&isOpen(poll);
+const selectedLink=safeLink(selectedOption?.external_url??null);
 ---
 <Layout language={language} title={poll?poll[`title_${language}`]:(fr?'Consultation indisponible':'Consultation unavailable')}>
 {error&&<p class="notice error" role="alert">{error}</p>}
 {!poll&&!error&&<h1>{fr?'Consultation introuvable':'Consultation not found'}</h1>}
 {poll&&<><p>{poll.organization}</p><h1>{poll[`title_${language}`]}</h1><p>{poll[`description_${language}`]}</p>
 <p class="notice">{open?(fr?'Consultation ouverte':'Consultation open'):(fr?'Consultation fermée':'Consultation closed')}</p>
-{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p>}{open&&<p><a href={`/${poll.slug}?edit=1`}>{fr?'Modifier mon choix':'Change my choice'}</a></p>}<p><a href="#mention-consent">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</a></p></section>}
+{success&&<section class="notice" role="status"><h2>{fr?'Merci pour votre participation':'Thank you for participating'}</h2>{promo&&<><p>{fr?'Votre code promotionnel :':'Your promotional code:'} <strong>{promo}</strong></p><p>{fr?(selectedOption?'Ce code vous donne un rabais de 20 % à l’achat d’une des décorations murales, y compris celle que vous venez de sélectionner.':'Ce code vous donne un rabais de 20 % à l’achat d’une des décorations murales.'):(selectedOption?'This code gives you 20% off the purchase of one of the wall decorations, including the one you just selected.':'This code gives you 20% off the purchase of one of the wall decorations.')}</p>{selectedOption&&selectedLink&&<p><a href={selectedLink} target="_blank" rel="noopener noreferrer">{fr?`Voir la décoration murale sélectionnée : ${selectedOption.name_fr}`:`View your selected wall decoration: ${selectedOption.name_en}`} ↗</a></p>}</>}{open&&<p><a href={`/${poll.slug}?edit=1`}>{fr?'Modifier mon choix':'Change my choice'}</a></p>}<p><a href="#mention-consent">{fr?'Coordonnées et autorisation de mention (facultatif)':'Contact details and mention permission (optional)'}</a></p></section>}
 {savedChoice&&<p class="notice" id="saved-choice">{savedChoice.choice_type==='vote'?(fr?'Votre vote enregistré :':'Your saved vote:'):(fr?'Votre proposition enregistrée :':'Your saved proposal:')} <strong>{savedChoice.choice_type==='vote'?savedChoice[`name_${language}`]:savedChoice.title}</strong></p>}
 {results&&<VoteResults language={language} results={results}/>}
 {resultsError&&<p role="status">{fr?'Les résultats sont temporairement indisponibles.':'Results are temporarily unavailable.'}</p>}
